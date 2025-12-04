@@ -1,5 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { QueryResult, QueryResultRow } from 'pg';
 
+type QueryExecutor = {
+  query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params?: ReadonlyArray<unknown>,
+  ): Promise<QueryResult<T>>;
+};
 @Injectable()
 export class ChatsService {
   getChatList() {
@@ -61,5 +68,26 @@ export class ChatsService {
         pinned: false,
       },
     ];
+  }
+  //
+  constructor(@Inject('PG') private readonly pg: QueryExecutor) {}
+
+  async createMessage(
+    chatId: string,
+    role: string,
+    content: string,
+    timestamp: Date,
+  ) {
+    await this.pg.query(
+      `INSERT INTO messages (chat_id, role, content, created_at) VALUES ($1, $2, $3, $4)`,
+      [chatId, role, content, timestamp],
+    );
+  }
+
+  async getMessages(chatId: string) {
+    return this.pg.query(
+      `SELECT * FROM messages WHERE chat_id = $1 ORDER BY create_at ASC`,
+      [chatId],
+    );
   }
 }
