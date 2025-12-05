@@ -16,7 +16,7 @@ export class CreateMessageBody {
 export class ChatsController {
   constructor(private readonly chatsService: ChatsService) {}
 
-  @Get()
+  @Get('list')
   getChatList() {
     return this.chatsService.getChatList();
   }
