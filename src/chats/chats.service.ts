@@ -72,22 +72,61 @@ export class ChatsService {
   //
   constructor(@Inject('PG') private readonly pg: QueryExecutor) {}
 
-  async createMessage(
-    chatId: string,
-    role: string,
-    content: string,
-    timestamp: Date,
-  ) {
+  async createMessage(conversationId: number, role: string, content: string) {
     await this.pg.query(
-      `INSERT INTO messages (chat_id, role, content, created_at) VALUES ($1, $2, $3, $4)`,
-      [chatId, role, content, timestamp],
+      `INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)`,
+      [conversationId, role, content],
+    );
+
+    // 마지막 업데이트 시간 갱신
+    await this.pg.query(
+      `UPDATE conversations SET updated_at = NOW() WHERE conversation_id = $1`,
+      [conversationId],
     );
   }
 
-  async getMessages(chatId: string) {
+  async getMessages(conversationId: number) {
     return this.pg.query(
-      `SELECT * FROM messages WHERE chat_id = $1 ORDER BY create_at ASC`,
-      [chatId],
+      `SELECT * FROM messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC`,
+      [conversationId],
+    );
+  }
+
+  async createConversationWithFirstMessage(
+    role: string,
+    content: string,
+  ): Promise<number> {
+    // 1) conversation 생성
+    type ConversationRow = {
+      conversation_id: number;
+    };
+
+    const result = await this.pg.query<ConversationRow>(
+      `INSERT INTO conversations DEFAULT VALUES RETURNING conversation_id`,
+    );
+
+    const firstRow = result.rows[0] as ConversationRow | undefined;
+    if (!firstRow) {
+      throw new Error('Failed to create conversation');
+    }
+
+    const conversationId = firstRow.conversation_id;
+
+    // 2) 첫 메시지 저장
+    await this.pg.query(
+      `INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)`,
+      [conversationId, role, content],
+    );
+
+    return conversationId;
+  }
+
+  async saveAssistantMessage(conversationId: number, content: string) {
+    await this.pg.query(
+      `INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)`,
+      [conversationId, content],
     );
   }
 }

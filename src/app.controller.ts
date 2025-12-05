@@ -1,6 +1,7 @@
 import { Controller, Sse, MessageEvent, Query } from '@nestjs/common';
 import { Observable, interval } from 'rxjs';
-import { map, take } from 'rxjs/operators';
+import { mergeMap, take } from 'rxjs/operators';
+import { ChatsService } from './chats/chats.service';
 
 interface StreamChunk {
   type: 'start' | 'chunk' | 'end';
@@ -10,7 +11,8 @@ interface StreamChunk {
 
 @Controller('api')
 export class AppController {
-  // 질문 키워드에 따른 응답 생성
+  constructor(private readonly chatsService: ChatsService) {}
+
   private generateResponse(userMessage: string): string {
     const lowerMessage = userMessage.toLowerCase();
 
@@ -63,21 +65,24 @@ export class AppController {
   }
 
   @Sse('sse')
-  sse(@Query('message') userMessage: string): Observable<MessageEvent> {
-    console.log('Received message:', userMessage);
-
+  sse(
+    @Query('message') userMessage: string,
+    @Query('conversationId') conversationId: number,
+  ): Observable<MessageEvent> {
     const messageId = Date.now().toString();
     const fullResponse = this.generateResponse(userMessage || '안녕하세요');
 
     const chunks = fullResponse.split('');
     const totalChunks = chunks.length;
 
-    // 타이핑 속도 조절 (20-40ms 사이 랜덤)
     const typingSpeed = 25;
+
+    // 🔥 여기서 서버 측 버퍼 생성
+    let buffer = '';
 
     return interval(typingSpeed).pipe(
       take(totalChunks + 2),
-      map((index) => {
+      mergeMap(async (index) => {
         let chunk: StreamChunk;
 
         if (index === 0) {
@@ -87,12 +92,22 @@ export class AppController {
             messageId,
           };
         } else if (index <= totalChunks) {
+          const content = chunks[index - 1];
+          buffer += content; // 🔥 chunk 누적
+
           chunk = {
             type: 'chunk',
-            content: chunks[index - 1],
+            content,
             messageId,
           };
         } else {
+          // 🔥 end 시점 → 전체 assistant 메시지 DB 저장
+          await this.chatsService.createMessage(
+            conversationId,
+            'assistant',
+            buffer,
+          );
+
           chunk = {
             type: 'end',
             content: '',
