@@ -7,7 +7,7 @@ async function bootstrap() {
   });
   app.enableShutdownHooks();
   app.enableCors({
-    origin: ['https://chat-flow-inky.vercel.app/', 'http://localhost:5173'],
+    origin: ['https://chat-flow-inky.vercel.app', 'http://localhost:5173'],
   });
   await app.listen(3000);
   console.log(`Application is running on: ${await app.getUrl()}`);
